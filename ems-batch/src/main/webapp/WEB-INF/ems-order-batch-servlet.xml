@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:tx="http://www.springframework.org/schema/tx" xmlns:mvc="http://www.springframework.org/schema/mvc"
+	xmlns:p="http://www.springframework.org/schema/p"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+    http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd
+    http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc.xsd">
+
+	<!-- <context:property-placeholder location="file:${catalina.base}/ems/ems_common.properties,file:${catalina.base}/ems/ems_spring_batch.properties" /> -->
+
+	<context:component-scan base-package="com.mentor.ems" />
+
+	<!-- This allow for dispatching requests to Controllers -->
+	<mvc:annotation-driven />
+	<!-- <import resource="file:${catalina.base}/ems/ems-token-validation-ws.xml"/> -->
+	<!-- Import job-configuration.xml 
+	-->
+	
+	<!-- <import resource="file:${catalina.base}/ems/ems-beacon-jms-bean-definition.xml"/> 
+	<import resource="file:${catalina.base}/ems/ems-siebel-interface-jms-bean-definition.xml"/> -->
+	
+	<!-- "org.jasypt.spring.properties.EncryptablePropertyPlaceholderConfigurer" -->
+	<bean id="propertyPlaceholderConfigurer"
+		class="org.jasypt.spring.properties.EncryptablePropertyPlaceholderConfigurer ">
+		<constructor-arg ref="configurationEncryptor" />
+		 <property name="locations">
+            <list>
+                <value>file:${catalina.base}/ems/ems_common.properties</value>
+                <value>file:${catalina.base}/ems/ems_spring_batch.properties</value>
+            </list>
+        </property>
+	</bean>
+
+	<bean id="configurationEncryptor" class="org.jasypt.encryption.pbe.StandardPBEStringEncryptor">
+		<property name="config" ref="environmentVariablesConfiguration" />
+	</bean>
+
+	<bean id="environmentVariablesConfiguration"
+		class="org.jasypt.encryption.pbe.config.EnvironmentStringPBEConfig">
+		<property name="algorithm" value="PBEWithMD5AndDES" />
+		<property name="password" value="#{key.keyValue()}"/>
+	</bean>
+
+ <bean id="springBatchDataSource" class = "com.mchange.v2.c3p0.ComboPooledDataSource" destroy-method="close"
+		  p:driverClass="oracle.jdbc.OracleDriver"
+		  p:jdbcUrl="${db.spring.batch.url}"
+		  p:user="${db.spring.batch.username}"
+		  p:password="${db.spring.batch.password}"
+		  p:initialPoolSize="15"
+		  p:minPoolSize="15"
+		  p:maxPoolSize="50"
+		  p:acquireIncrement="5"
+		  p:maxIdleTime="180000"
+		  p:maxConnectionAge="3600000"
+		  p:debugUnreturnedConnectionStackTraces="true"
+	/>
+
+	<import resource="ems-order-job-configuration.xml" />
+	 <!-- <import resource="ems-customer-daily-job-config.xml" />  -->
+	 
+
+	
+	<bean id="entityManagerFactoryBean"
+		class="org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean">
+		<property name="dataSource" ref="dataSource" />
+		<property name="packagesToScan" value="com.mentor.ems" />
+		<property name="jpaVendorAdapter">
+			<bean class="org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter" />
+		</property>
+		<property name="jpaProperties">
+			<props>
+				<!-- <prop key="hibernate.hbm2ddl.auto">validate</prop> -->
+				<prop key="hibernate.dialect">org.hibernate.dialect.Oracle10gDialect</prop>
+				<prop key="hibernate.format_sql">true</prop>
+				<prop key="hibernate.show_sql">${db.hibernate.show.sql}</prop>
+				<prop key="hibernate.generate_statistics">true</prop>
+			    <prop key="hibernate.default_schema">${db.dataload11.schema}</prop>
+			</props>
+		</property>
+	</bean>
+
+	<bean id="dataSource" class = "com.mchange.v2.c3p0.ComboPooledDataSource" destroy-method="close"
+        p:driverClass="oracle.jdbc.OracleDriver"
+        p:jdbcUrl="${db.url}"
+        p:user="${db.dataload11.username}"
+        p:password="${db.dataload11.password}"
+		p:initialPoolSize="5"
+        p:minPoolSize="5"
+        p:maxPoolSize="25"
+		p:acquireIncrement="5"
+		p:acquireRetryAttempts="1"
+        p:maxIdleTime="180000"
+		p:maxConnectionAge="3600000"
+		p:debugUnreturnedConnectionStackTraces="true"
+	/>
+
+	<bean id="transactionManager" class="org.springframework.orm.jpa.JpaTransactionManager">
+		<property name="entityManagerFactory" ref="entityManagerFactoryBean" />
+	</bean>
+
+	<bean id="BEACONREDISProperties"
+		  class="org.springframework.beans.factory.config.PropertiesFactoryBean">
+		<property name="locations">
+			<list>
+				<value>file:${catalina.base}/ems/ems_redis.properties</value>
+			</list>
+		</property>
+	</bean>
+
+	<bean id="BEACONSOLRProperties"
+		  class="org.springframework.beans.factory.config.PropertiesFactoryBean">
+		<property name="locations">
+			<list>
+				<value>file:${catalina.base}/ems/ems_solr.properties</value>
+			</list>
+		</property>
+	</bean>
+
+	<bean id="BEACONProperties"
+		  class="org.springframework.beans.factory.config.PropertiesFactoryBean">
+		<property name="locations">
+			<list>
+				<value>file:${catalina.base}/ems/ems_common.properties</value>
+			</list>
+		</property>
+	</bean>
+	
+	<bean id="BEACONJMSProperties"
+          class="org.springframework.beans.factory.config.PropertiesFactoryBean">
+        <property name="locations">
+            <list>
+                <value>file:${catalina.base}/ems/ems_jms.properties</value>
+            </list>
+        </property>
+    </bean>	
+
+	<bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+		<property name="dataSource" ref="dataSource"></property>
+	</bean>
+	
+	 <!-- bind the process engine service as Spring Bean -->
+  <bean id="stdSalesOrderEntitlementEventImpl" class="com.mentor.ems.entitlement.event.STDSalesOrderEntitlementEventImpl"/>
+  <bean id="aersEntitlementEventImpl" class="com.mentor.ems.entitlement.event.AersEntitlementEventImpl" />
+	<bean name="processEngineService"
+		class="org.camunda.bpm.BpmPlatform"
+		factory-method="getProcessEngineService" />
+		
+	<bean name="processEngine" factory-bean="processEngineService" factory-method="getDefaultProcessEngine" />
+	
+	<bean id="repositoryService" factory-bean="processEngine" factory-method="getRepositoryService" />
+<bean id="runtimeService" factory-bean="processEngine" factory-method="getRuntimeService" />
+
+        <bean id="taskService" factory-bean="processEngine" factory-method="getTaskService" />
+
+        <bean id="historyService" factory-bean="processEngine" factory-method="getHistoryService" />
+
+        <bean id="managementService" factory-bean="processEngine" factory-method="getManagementService" />
+        
+           <bean id="agreementLoadDelegate" class="com.mentor.ems.entitlement.camunda.AgreementLoadDelegate" />
+   <bean id="serviceEntitlementDeligate" class="com.mentor.ems.entitlement.camunda.ServiceEntitlementDeligate" />
+  <!-- <bean id="calculateInterestService" class="com.mentor.ems.entitlement.camunda.CalculateInterestService" />-->
+  <bean id="entitlementTypeListener" class="com.mentor.ems.entitlement.camunda.EntitlementTypeListener"/>
+  <bean id="agreementReprocessListener" class="com.mentor.ems.entitlement.camunda.AgreementReprocessListener"/>
+  <bean id="serviceEntReprocessListener" class="com.mentor.ems.entitlement.camunda.ServiceEntReprocessListener"/>
+  <bean id="wFStartListener" class="com.mentor.ems.entitlement.camunda.WFStartListener"/>
+   <bean id="wFEndListener" class="com.mentor.ems.entitlement.camunda.WFEndListener"/>
+        
+
+
+
+      <!-- bootstrap the process application -->
+
+<!--       <bean id="processApplication"
+
+            class="org.camunda.bpm.engine.spring.application.SpringServletProcessApplication" />-->
+	<!-- responsible for registering the necessary Spring components that power
+		annotation-driven transaction management; such as when @Transactional methods 
+		are invoked -->
+	<tx:annotation-driven></tx:annotation-driven>
+	
+	<mvc:cors>
+		<mvc:mapping path="/**" />
+	</mvc:cors>
+
+</beans>

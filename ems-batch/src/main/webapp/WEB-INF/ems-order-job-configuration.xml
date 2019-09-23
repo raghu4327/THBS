@@ -1,0 +1,824 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:batch="http://www.springframework.org/schema/batch"
+	xmlns:task="http://www.springframework.org/schema/task"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xmlns:mvc="http://www.springframework.org/schema/mvc"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+    http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd
+    http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch.xsd
+    http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+    http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc.xsd
+    http://www.springframework.org/schema/batch  http://www.springframework.org/schema/batch/spring-batch.xsd
+    http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
+    http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util.xsd">
+
+	<!-- <bean id="jobRepository" class="org.springframework.batch.core.repository.support.MapJobRepositoryFactoryBean"> -->
+	<bean id="jobRepository"
+		class="org.springframework.batch.core.repository.support.MapJobRepositoryFactoryBean">
+		<property name="transactionManager" ref="transactionManager" />
+	<!-- 	<property name="dataSource" ref="springBatchDataSource" />
+		<property name="databaseType" value="oracle" /> -->
+	</bean>
+	<!-- Order job Listener -->
+	<bean id="orderJobListener"
+		class="com.mentor.ems.batch.listener.OrderChunkListener" />
+	<bean id="jobLauncher"
+		class="org.springframework.batch.core.launch.support.SimpleJobLauncher">
+		<property name="jobRepository" ref="jobRepository" />
+	</bean>
+
+	<!-- order processing step config -->
+	<job id="OrderJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="orderJobStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="pagingItemReader" processor="orderProcessor"
+					writer="itemWriter" commit-interval="1" skip-limit="1000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+		<listeners>
+			<batch:listener ref="orderJobListener"></batch:listener>
+		</listeners>
+	</job>
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="pagingItemReader"
+		class="com.mentor.ems.batch.custom.reader.BeaconCustomJPAPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select e from EmsJob e where e.jobStatus in ('NEW','FAILED') and e.jobType = 'ORDERJOBTYPE' order by e.createTs,e.jobKey" />
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="itemWriter"
+		class="com.mentor.ems.batch.order.writer.OrderWriter" />
+
+	<!-- processor to process json -->
+	<bean id="orderProcessor"
+		class="com.mentor.ems.batch.order.processor.OrderProcessor" />
+
+
+	<!-- order processing step config -->
+	<job id="EntitlementJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="step2">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="pagingEntitlementReader"
+					processor="entitlementProcessor" writer="entitlementWriter"
+					commit-interval="1">
+					<!-- <skippable-exception-classes> <include class="java.lang.Exception"></include> 
+						</skippable-exception-classes> -->
+				</chunk>
+			</tasklet>
+		</step>
+		<listeners>
+			<batch:listener ref="entitlementJobListener"></batch:listener>
+		</listeners>
+	</job>
+
+	<!-- Entitlement job Listener -->
+	<bean id="entitlementJobListener"
+		class="com.mentor.ems.batch.listener.EntitlementChunkListener" />
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="pagingEntitlementReader"
+		class="com.mentor.ems.batch.custom.reader.BeaconCustomJPAPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select e from EmsJob e where e.jobStatus in ('NEW','FAILED') and e.jobType = 'ENTITLEMENTJOBTYPE' order by e.createTs,e.jobKey" />
+		<property name="pageSize" value="1" />
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="entitlementWriter"
+		class="com.mentor.ems.batch.order.writer.EntitlementWriter" />
+
+	<!-- processor to process json -->
+	<bean id="entitlementProcessor"
+		class="com.mentor.ems.batch.order.processor.EntitlementProcessor" />
+
+
+	<!-- order processing step config -->
+	<job id="ConsultingEntitlementDeltaJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="step3">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="pagingConsultingEntitlementDeltaReader"
+					processor="consultingEntitlementDeltaProcessor"
+					writer="entitlementDeltaWriter" commit-interval="1" />
+			</tasklet>
+		</step>
+		<listeners>
+			<batch:listener
+				ref="consultingEntitlementDeltaJobListener"></batch:listener>
+		</listeners>
+	</job>
+
+	<bean id="pagingConsultingEntitlementDeltaReader"
+		class="com.mentor.ems.batch.custom.reader.ConsultingEntitlementDeltaItemReader"
+		scope="step">
+		<property name="queryString"
+			value="select od from OrderDetail od 
+			join OrderHeader oh on od.orderHeader.orderHdrKey=oh.orderHdrKey and trunc(od.contractEndDt) 
+			&lt;=trunc(sysdate) JOIN ConsultingEntitlement ece on od.orderDetailKey =ece.orderDetailKey.orderDetailKey 
+			JOIN Codes ittyp on ece.itemTypeKey.codeKey=ittyp.codeKey and ittyp.codeValue 
+			='Consulting Backlog' JOIN Codes sts on ece.statusCode.codeKey=sts.codeKey 
+			and sts.codeValue ='ACTIVE'" />
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="entitlementDeltaWriter"
+		class="com.mentor.ems.batch.order.writer.EntitlementDeltaWriter" />
+
+	<!-- processor to process json -->
+	<bean id="consultingEntitlementDeltaProcessor"
+		class="com.mentor.ems.batch.order.processor.ConsultingEntitlementDeltaProcessor" />
+
+
+
+	<!-- order processing step config -->
+	<job id="TrainingEntitlementDeltaJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="step4">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="pagingTrainingEntitlementDeltaReader"
+					processor="trainingEntitlementDeltaProcessor"
+					writer="entitlementDeltaWriter" commit-interval="1" />
+			</tasklet>
+		</step>
+		<listeners>
+			<batch:listener
+				ref="trainingEntitlementDeltaJobListener"></batch:listener>
+		</listeners>
+	</job>
+
+	<bean id="trainingEntitlementDeltaJobListener"
+		class="com.mentor.ems.batch.listener.TrainingEntitlementDeltaJobListener" />
+
+	<bean id="consultingEntitlementDeltaJobListener"
+		class="com.mentor.ems.batch.listener.ConsultingEntitlementDeltaJobListener" />
+
+	<bean id="pagingTrainingEntitlementDeltaReader"
+		class="com.mentor.ems.batch.custom.reader.TrainingEntitlementDeltaItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<!-- <property name="queryString" value="select od from OrderDetail od 
+			join OrderHeader oh on od.orderHeader.orderHdrKey=oh.orderHdrKey and (trunc(od.contractStartDt) 
+			&lt;=trunc(sysdate) or trunc(od.contractEndDt) &lt;=trunc(sysdate)) JOIN 
+			TrainingEntitlement ece on od.orderDetailKey =ece.orderDetail.orderDetailKey 
+			JOIN Codes ittyp on ece.itemType.codeKey=ittyp.codeKey and ittyp.codeValue 
+			in ('Training Backlog','Training Active') JOIN Codes sts on ece.statusCd.codeKey=sts.codeKey 
+			and sts.codeValue ='ACTIVE'" /> -->
+
+	</bean>
+
+
+	<!-- processor to process json -->
+	<bean id="trainingEntitlementDeltaProcessor"
+		class="com.mentor.ems.batch.order.processor.TrainingEntitlementDeltaProcessor" />
+
+	<!-- SOLR Job Processing.... All Solr Jobs goes here.............. -->
+
+
+	<job id="SOLREntitlementIndexJobFull" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="solrEntStepAll">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="entitlementViewReaderAll"
+					processor="SolrEntProcessor" writer="SolrWriterEntitlement"
+					commit-interval="1000" skip-limit="1000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+		<listeners>
+			<listener ref="SolrEntitlementJobListener" />
+		</listeners>
+	</job>
+
+	<!-- Configuring reader to read customer data from DB -->
+	<bean id="entitlementViewReaderAll"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader"
+		scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="sql"
+			value="#{jobParameters['VIEW_ENTITLEMENT_SQL_QUERY_RAW']}" />
+		<property name="rowMapper">
+			<bean
+				class="com.mentor.ems.entitlement.dao.mapper.EntitlementRowMapper" />
+		</property>
+	</bean>
+
+	<job id="SOLRCustomerIndexJobFull" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="solrCustStepAll">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="customerViewReaderAll"
+					processor="SolrCustProcessor" writer="SolrWriterCustomer"
+					commit-interval="100" skip-limit="100000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+						<include
+							class="com.mentor.ems.common.exception.ServiceException"></include>
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+		<listeners>
+			<listener ref="SolrCustomerJobListener" />
+		</listeners>
+	</job>
+
+
+
+	<!-- Entitlement SOLR Reprocessing.......... -->
+	<job id="SOLREntitlementOngoing" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="readEntitlementEMSJobOngoing">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="readEntitlementEMSJobOngoingReader"
+					writer="emsJobEntitlementOngoingWriter" commit-interval="1"
+					skip-limit="10000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+						<include
+							class="com.mentor.ems.common.exception.ServiceException"></include>
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+		<listeners>
+			<listener ref="SolrEntitlementReprocessingListener" />
+		</listeners>
+	</job>
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="readEntitlementEMSJobOngoingReader"
+		class="com.mentor.ems.batch.custom.reader.BeaconCustomJPAPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select e from EmsJob e where e.jobStatus in ('NEW','FAILED') and e.jobType in ('SOLR_ENTITLEMENT_REPROCESSING_TYPE_JOB') order by e.createTs,e.jobKey" />
+	</bean>
+
+	<bean id="emsJobEntitlementOngoingWriter"
+		class="com.mentor.ems.batch.solr.entitlement.writer.SolrEntitlementOngoingWriter" />
+
+	<!-- SolrEntitlement Reprocessing job Listener -->
+	<bean id="SolrEntitlementReprocessingListener"
+		class="com.mentor.ems.batch.listener.SolrEntitlementReprocessChunkListener" />
+
+	<!-- TrainingEntitlement SOLR Reprocessing.......... -->
+	<job id="SOLRTrainingEntitlementOngoing" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="readTrainingEntitlementEMSJobOngoing">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="readTrainingEntitlementEMSJobOngoingReader"
+					writer="emsJobTrainingEntitlementOngoingWriter" commit-interval="1"
+					skip-limit="10000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+						<include
+							class="com.mentor.ems.common.exception.ServiceException"></include>
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+		<listeners>
+			<listener ref="SolrTrainingEntitlementReprocessingListener" />
+		</listeners>
+	</job>
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="readTrainingEntitlementEMSJobOngoingReader"
+		class="com.mentor.ems.batch.custom.reader.BeaconCustomJPAPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select e from EmsJob e where e.jobStatus in ('NEW','FAILED') and e.jobType in ('SOLR_TRAINING_ENTITLEMENT_ONGOING_JOB') order by e.createTs,e.jobKey" />
+	</bean>
+
+	<bean id="emsJobTrainingEntitlementOngoingWriter"
+		class="com.mentor.ems.batch.solr.entitlement.writer.SolrTrainingEntitlementOngoingWriter" />
+
+	<!-- SolrTrainingEntitlement Reprocessing job Listener -->
+	<bean id="SolrTrainingEntitlementReprocessingListener"
+		class="com.mentor.ems.batch.listener.SolrTrainingEntitlementReprocessChunkListener" />
+
+	<!-- ConsultingEntitlement SOLR Reprocessing.......... -->
+	<job id="SOLRConsultingEntitlementOngoing" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="readConsultingEntitlementEMSJobOngoing">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="readConsultingEntitlementEMSJobOngoingReader"
+					writer="emsJobConsultingEntitlementOngoingWriter"
+					commit-interval="1" skip-limit="10000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+						<include
+							class="com.mentor.ems.common.exception.ServiceException"></include>
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+		<listeners>
+			<listener
+				ref="SolrConsultingEntitlementReprocessingListener" />
+		</listeners>
+	</job>
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="readConsultingEntitlementEMSJobOngoingReader"
+		class="com.mentor.ems.batch.custom.reader.BeaconCustomJPAPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select e from EmsJob e where e.jobStatus in ('NEW','FAILED') and e.jobType in ('SOLR_CONSULTING_ENTITLEMENT_ONGOING_JOB') order by e.createTs,e.jobKey" />
+	</bean>
+
+	<bean id="emsJobConsultingEntitlementOngoingWriter"
+		class="com.mentor.ems.batch.solr.entitlement.writer.SolrConsultingEntitlementOngoingWriter" />
+
+	<!-- Solr Consulting Entitlement Reprocessing job Listener -->
+	<bean id="SolrConsultingEntitlementReprocessingListener"
+		class="com.mentor.ems.batch.listener.SolrConsultingEntitlementReprocessChunkListener" />
+
+	<!-- Entitlement SOLR Reprocessing.......... -->
+
+	<bean id="SolrWriterEntitlement"
+		class="com.mentor.ems.batch.solr.entitlement.writer.SolrEntitlementWriter" />
+
+	<bean id="SolrWriterCustomer"
+		class="com.mentor.ems.batch.solr.customer.writer.SolrCustomerWriter" />
+
+	<bean id="SolrCustProcessor"
+		class="com.mentor.ems.batch.solr.customer.processor.SolrCustomerProcessor" />
+
+	<bean id="SolrEntProcessor"
+		class="com.mentor.ems.batch.solr.entitlement.processor.SolrEntitlementProcessor" />
+
+	<bean id="SolrEntitlementJobListener"
+		class="com.mentor.ems.batch.solr.listener.SolrEntitlementJobListener"></bean>
+	<bean id="SolrCustomerJobListener"
+		class="com.mentor.ems.batch.solr.listener.SolrCustomerJobListener"></bean>
+
+	<!-- Configuring reader to read customer data from DB -->
+	<bean id="customerViewReaderAll"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader"
+		scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="sql"
+			value="#{jobParameters['VIEW_CUSTOMER_SQL_QUERY_RAW']}" />
+		<property name="rowMapper">
+			<bean class="com.mentor.ems.customer.mapper.CustomerRowMapper" />
+		</property>
+	</bean>
+
+	<!-- product Index processing step config -->
+	<job id="productIndexJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="partStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="productIndexReader"
+					processor="productIndexProcessor" writer="productIndexWriter"
+					commit-interval="50" skip-limit="1000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception" />
+					</skippable-exception-classes>
+				</chunk>
+				<listeners>
+					<listener ref="productProcessListener" />
+				</listeners>
+			</tasklet>
+		</step>
+	</job>
+
+	<!-- processor to process json -->
+	<bean id="productIndexProcessor"
+		class="com.mentor.ems.batch.solr.product.processor.SolrProductProcessor" />
+
+	<bean id="productIndexReader"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader"
+		scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="sql"
+			value="#{jobParameters['VIEW_PRODUCT_SQL_QUERY_RAW']}" />
+		<property name="rowMapper">
+			<bean
+				class="com.mentor.ems.entitlement.dao.mapper.ProductRowMapper" />
+		</property>
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="productIndexWriter"
+		class="com.mentor.ems.batch.solr.product.writer.SolrProductWriter" />
+
+	<bean id="productProcessListener"
+		class="com.mentor.ems.batch.solr.listener.SolrProductJobListener" />
+	<!-- Configuring reader to read part number from DB -->
+
+	<!--Ongoing product Index processing step config -->
+	<job id="productOngoingIndexJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="partOngoingStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="productOngoingIndexReader"
+					processor="productOngoingIndexProcessor"
+					writer="productOngoingIndexWriter" commit-interval="50"
+					skip-limit="1000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception" />
+					</skippable-exception-classes>
+				</chunk>
+				<!-- <listeners> <listener ref="productProcessListener" /> </listeners> -->
+			</tasklet>
+		</step>
+	</job>
+
+	<!-- processor to process json -->
+	<bean id="productOngoingIndexProcessor"
+		class="com.mentor.ems.batch.solr.product.processor.SolrProductProcessor" />
+
+	<bean id="productOngoingIndexReader"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader"
+		scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="sql"
+			value="#{jobParameters['VIEW_PRODUCT_SQL_QUERY_RAW']}" />
+		<property name="rowMapper">
+			<bean
+				class="com.mentor.ems.entitlement.dao.mapper.ProductRowMapper" />
+		</property>
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="productOngoingIndexWriter"
+		class="com.mentor.ems.batch.solr.product.writer.SolrOngoingProductWriter" />
+
+	<!--Product Solr Load Reprocessing Job step configuration -->
+	<job id="ProductSolrReprocessingJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="productReprocessStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="productReprocessReader"
+					processor="productReprocessor" writer="productReprocessWriter"
+					commit-interval="50" skip-limit="1000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+	</job>
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="productReprocessReader"
+		class="org.springframework.batch.item.database.JpaPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select jp from EmsJobParam jp left join jp.emsJob e where e.jobType='PRODUCTJOBTYPE'and jp.statusCode in ('NEW','FAILED')" />
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="productReprocessWriter"
+		class="com.mentor.ems.batch.solr.product.writer.SolrProductReprocessWriter" />
+
+	<!-- processor to process json -->
+	<bean id="productReprocessor"
+		class="com.mentor.ems.batch.solr.product.processor.SolrProductReprocessor" />
+
+	<!-- customer processing step config -->
+	<job id="partyRelationshipJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="customerRelatonStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="customerReader" processor="customerProcessor"
+					writer="customerWriter" commit-interval="1" />
+
+			</tasklet>
+		</step>
+	</job>
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="customerReader"
+		class="com.mentor.ems.batch.custom.reader.BeaconCustomJPAPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select e from PartyXParty e left join e.statusCode status WHERE status.codeType='STATUS_CODE' AND (status.codeValue = 'ACTIVE' AND (SYSDATE NOT BETWEEN e.relationshipStartTs and e.relationshipEndTs))OR(status.codeValue = 'INACTIVE' AND (SYSDATE BETWEEN e.relationshipStartTs and e.relationshipEndTs))order by e.partyRelationshipKey" />
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="customerWriter"
+		class="com.mentor.ems.batch.customer.writer.CustomerRelationshipWriter" />
+
+	<!-- processor to process json -->
+	<bean id="customerProcessor"
+		class="com.mentor.ems.batch.customer.processor.CustomerRelationshipProcessor" />
+
+	<!-- Daily job for updating account type status based on sysdate -->
+	<job id="partyAccounttypeJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="customerAccounttypeStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="customerAccounttypeReader"
+					processor="customerAccounttypeProcessor"
+					writer="customerAccounttypeWriter" commit-interval="1" />
+
+			</tasklet>
+		</step>
+	</job>
+
+	<!-- Reader for updating account type status daily job -->
+	<bean id="customerAccounttypeReader"
+		class="com.mentor.ems.batch.custom.reader.BeaconCustomJPAPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select e from PartyXAccounttype e" />
+		<!-- left join e.codes1 status where sysdate not between e.relationshipStartDate 
+			and e.relationshipEndDate and status.codeValue='ACTIVE' and status.codeType='STATUS_CODE' 
+			order by e.partyAccountTypeKey" / -->
+	</bean>
+
+	<!-- Writer for updating account type status daily job -->
+	<bean id="customerAccounttypeWriter"
+		class="com.mentor.ems.batch.customer.writer.CustomerAccounttypeWriter" />
+
+	<!-- Processor for updating account type status daily job -->
+	<bean id="customerAccounttypeProcessor"
+		class="com.mentor.ems.batch.customer.processor.CustomerAccountTypeProcessor" />
+
+
+	<!-- END : SOLR Job Processing.................. -->
+
+
+	<!-- order Error processing step config -->
+	<job id="OrderProcessJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="orderProcessJobStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="orderReader" writer="orderWriter"
+					commit-interval="1" skip-limit="1000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+	</job>
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="orderReader"
+		class="com.mentor.ems.batch.custom.reader.BeaconCustomJPAPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select e from Event e where e.eventStatus = 'FAILED' and e.eventSubType = 'ORDEREVENTTYPE' order by e.createTs,e.eventKey" />
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="orderWriter"
+		class="com.mentor.ems.batch.order.writer.OrderItemWriter" />
+
+	<!-- order LineItem processing config -->
+	<job id="OrderLineItemJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="orderLineItemJobStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="orderLineItemReader"
+					processor="orderLineItemProcessor" writer="orderLineItemWriter"
+					commit-interval="1" skip-limit="1000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+	</job>
+
+	<!-- Configuring reader to read LineItem from DB -->
+	<bean id="orderLineItemReader"
+		class="com.mentor.ems.batch.custom.reader.BeaconCustomJPAPagingItemReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select ep from EventProcess ep where ep.payloadName = 'PRODUCT ENTITLEMENT' and ep.processStatus='NEW' and ep.eventProcessKey in (select epp.eventProcess.eventProcessKey from EventProcessParam epp where epp.paramName='REQUESTED DELIVERY DATE' and epp.dateValue &#60;= CURRENT_DATE)" />
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="orderLineItemWriter"
+		class="com.mentor.ems.batch.order.writer.OrderLineItemWriter" />
+
+	<!-- processor to process json -->
+	<bean id="orderLineItemProcessor"
+		class="com.mentor.ems.batch.order.processor.OrderLineItemProcessor" />
+
+
+	<!-- TermLicense processing step config -->
+	<job id="TermLicenseJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="termLicenseStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="autoRenewalTermLicenseReader"
+					processor="autoRenewalTermLicenseProcessor"
+					writer="autoRenewalTermLicenseWriter" commit-interval="100" />
+			</tasklet>
+		</step>
+	</job>
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="autoRenewalTermLicenseReader"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader"
+		scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="sql"
+			value="#{jobParameters['PRODUCT_ENT_DTL_SQL_QUERY_RAW']}" />
+		<property name="rowMapper">
+			<bean
+				class="com.mentor.ems.entitlement.dao.mapper.ProductEntitlementRowMapper" />
+		</property>
+	</bean>
+
+	<bean id="autoRenewalTermLicenseWriter"
+		class="com.mentor.ems.batch.licensing.term.writer.AutoRenewalWriter" />
+
+
+	<!-- processor to process json -->
+	<bean id="autoRenewalTermLicenseProcessor"
+		class="com.mentor.ems.batch.licensing.term.processor.AutoRenewalTermLicenseProcessor" />
+
+	<!-- PerpetualLicense processing step config -->
+	<job id="perpetualLicenseJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="perpetuaLicenseStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="perpetualLicenseReader"
+					processor="perpetualLicenseProcessor"
+					writer="perpetualLicenseWriter" commit-interval="100" />
+			</tasklet>
+		</step>
+	</job>
+	<bean id="perpetualLicenseReader"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader"
+		scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="sql"
+			value="#{jobParameters['PRODUCT_ENT_DTL_SQL_QUERY_RAW']}" />
+		<property name="rowMapper">
+			<bean
+				class="com.mentor.ems.entitlement.dao.mapper.ProductEntitlementRowMapper" />
+		</property>
+	</bean>
+
+
+	<bean id="perpetualLicenseWriter"
+		class="com.mentor.ems.batch.licensing.perpetual.writer.AutoRenewalPerpetualLicenseWriter" />
+
+
+	<!-- processor to process json -->
+	<bean id="perpetualLicenseProcessor"
+		class="com.mentor.ems.batch.licensing.perpetual.processor.AutoRenewalPerpetualLicenseProcessor" />
+
+
+	<!-- Installed Item Deletion step config -->
+	<job id="installedItemDeletionJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="installedItemDeletionStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="installedItemReader"
+					writer="installedItemWriter" commit-interval="1" skip-limit="1000">
+					<skippable-exception-classes>
+						<include class="java.lang.Exception" />
+					</skippable-exception-classes>
+				</chunk>
+			</tasklet>
+		</step>
+	</job>
+
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="installedItemReader"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader"
+		scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="sql"
+			value="#{jobParameters['PRODUCT_ENT_DTL_SQL_QUERY_RAW']}" />
+		<property name="rowMapper">
+			<bean
+				class="com.mentor.ems.entitlement.dao.mapper.ProductEntitlementRowMapper" />
+		</property>
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="installedItemWriter"
+		class="com.mentor.ems.batch.installeditem.writer.InstalledItemWriter" />
+
+
+<!--bean id="eldNotificationJobListener"
+		class="com.mentor.ems.batch.listener.ELDNotificationListener" / -->
+	
+
+	<!-- Configuring reader to read order json from DB -->
+
+	<bean id="eldNotificationReader"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader"
+		scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="sql"
+			value="#{jobParameters['ELD_AUTORENEWAL_NOTIFICATION_SQL_QUERY_RAW']}" />
+		<property name="rowMapper">
+			<bean
+				class="com.mentor.ems.entitlement.dao.mapper.ELDNotificationRowMapper" />
+		</property>
+	</bean>
+	
+	<!-- ELDNotificationJob processing step config -->
+	<job id="eldNotificationRenewalJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="eldNotificationStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="eldNotificationReader"
+					processor="eldNotificationProcessor"
+					writer="eldNotificationWriter" commit-interval="100" />
+			</tasklet>
+		</step>
+		<!-- <listeners>
+			<batch:listener ref="eldNotificationJobListener"></batch:listener>
+		</listeners> -->
+	</job>
+	
+
+	<bean id="eldNotificationWriter"
+		class="com.mentor.ems.batch.autorenewal.eldnotification.writer.AutoRenewalEldNotificationWriter" />
+
+
+	<!-- ELDNotificationJob to process json -->
+	<bean id="eldNotificationProcessor"
+		class="com.mentor.ems.batch.autorenewal.eldnotification.processor.AutoRenewalEldNotificationProcessor" />
+
+
+<!-- Configuration for modifycsedJob -->
+	
+	<!-- processor to process json -->
+	<bean id="siteCoterminousSupportProcessor"
+		class="com.mentor.ems.batch.siteTransaction.processor.SiteCoterminousSupportProcessor" />
+
+	<!-- Writer class to write data -->
+	<bean id="siteCoterminousSupportWriter"
+		class="com.mentor.ems.batch.siteTransaction.writer.SiteCoterminousSupportWriter" />
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="siteCoterminousSupportReader"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="sql"
+			value="#{jobParameters['PRODUCT_ENT_DTL_SQL_QUERY_RAW']}" />
+		<property name="rowMapper">
+			<bean
+				class="com.mentor.ems.entitlement.dao.mapper.ProductEntitlementRowMapper" />
+		</property>
+	</bean>
+
+	<!-- Site Status processing step config -->
+	<job id="modifycsedJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="siteStatusStep">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="siteCoterminousSupportReader"
+					processor="siteCoterminousSupportProcessor" writer="siteCoterminousSupportWriter"
+					commit-interval="1000" />
+			</tasklet>
+		</step>
+	</job>
+	
+
+
+</beans>

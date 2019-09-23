@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+	xmlns:p="http://www.springframework.org/schema/p"
+	xmlns:batch="http://www.springframework.org/schema/batch"
+	xmlns:task="http://www.springframework.org/schema/task"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xmlns:mvc="http://www.springframework.org/schema/mvc"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+    http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd
+     http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch.xsd
+    http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+    http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc.xsd
+    http://www.springframework.org/schema/batch  http://www.springframework.org/schema/batch/spring-batch.xsd
+    http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd">
+
+	<!-- <bean id="jobRepository" class="org.springframework.batch.core.repository.support.JobRepositoryFactoryBean"> -->
+	<bean id="jobRepository"
+		class="org.springframework.batch.core.repository.support.JobRepositoryFactoryBean">
+		<property name="transactionManager" ref="transactionManager" />
+		<property name="dataSource" ref="springBatchDataSource" />
+		<property name="databaseType" value="oracle" />
+	</bean>
+
+	<bean id="perpetualLicenseJobLauncher"
+		class="org.springframework.batch.core.launch.support.SimpleJobLauncher">
+		<property name="jobRepository" ref="jobRepository" />
+	</bean>
+
+	<!-- order processing step config -->
+	<job id="PerpetualLicenseJob" restartable="true"
+		xmlns="http://www.springframework.org/schema/batch">
+		<step id="step1">
+			<tasklet allow-start-if-complete="true">
+				<chunk reader="autoRenewalPerpetualLicenseReader"
+					processor="autoRenewalPerpetualLicenseProcessor"
+					writer="autoRenewalPerpetualLicenseWriter" commit-interval="1" />
+					<skippable-exception-classes>
+						<include class="java.lang.Exception"></include>
+					</skippable-exception-classes>
+			</tasklet>
+		</step>
+	</job>
+
+	<!-- Configuring reader to read order json from DB -->
+	<bean id="autoRenewalPerpetualLicenseReader"
+		class="com.mentor.ems.batch.licensing.perpetual.reader.AutoRenewalPerpetualLicenseReader"
+		scope="step">
+		<property name="entityManagerFactory"
+			ref="entityManagerFactoryBean" />
+		<property name="queryString"
+			value="select e from EmsJob e where e.jobStatus = 'NEW' and e.jobType = 'ENTITLEMENTJOBTYPE'" />
+	</bean>
+
+	<!-- Writer class to write data -->
+	<bean id="autoRenewalPerpetualLicenseWriter"
+		class="com.mentor.ems.batch.licensing.perpetual.writer.AutoRenewalPerpetualLicenseWriter" />
+
+	<!-- processor to process json -->
+	<bean id="autoRenewalPerpetualLicenseProcessor"
+		class="com.mentor.ems.batch.licensing.perpetual.processor.AutoRenewalPerpetualLicenseProcessor" />
+
+</beans>

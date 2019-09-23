@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<!-- Console Appender -->
+	<appender name="STDOUT" class="org.apache.log4j.ConsoleAppender">
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern" value="%d{yyyy-MM-dd HH:mm:ss} - %-5p - BATCH - %c{1}:%L - %X{ems-order} - %m%n" />
+		</layout>
+	</appender>
+
+	<!-- File Appender for INFO level -->
+	<appender name="ems-batch-log" class="org.apache.log4j.RollingFileAppender">
+		<param name="Threshold" value="INFO" />
+		<param name="File" value="${catalina.base}/logs/ems_batch_services.log" />
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern" value="%d{yyyy-MM-dd HH:mm:ss,SSS} - %t - %-5p - BATCH - %c{1}:%L - %X{ems-order} - %m%n" />
+		</layout>
+		<param name="maxFileSize" value="10MB" />
+		<param name="maxBackupIndex" value="10" />
+	</appender>
+
+	<!-- Send logs to both console and file audit -->
+      <!--	<logger name="org.hibernate.type" level="trace" />
+	<logger name="org.hibernate.SQL" level="debug" />-->
+	<logger name="org.hibernate" level="INFO" />
+	<logger name="org.springframework.orm.jpa" level="INFO" />
+
+	<logger name="org.springframework.data.solr.core.SolrTemplate" level="DEBUG"/>
+	<logger name="org.apache.solr.client.solrj" level="DEBUG"/>
+
+	<logger name="org.springframework.orm.jpa.JpaTransactionManager"
+		level="INFO" />
+	<logger name="org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter"
+		level="INFO" />
+	<logger
+		name="org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean"
+		level="INFO" />
+	<logger
+		name="org.springframework.orm.jpa.support.PersistenceAnnotationBeanPostProcessor"
+		level="INFO" />
+	<logger name="org.springframework.transaction" level="INFO" />
+
+	<root level="INFO">
+		<appender-ref ref="ems-batch-log" />
+	</root>
+	<logger name="com.mentor.ems" level="INFO" additivity="false">
+		<appender-ref ref="ems-batch-log" />
+	<!-- 	<appender-ref ref="STDOUT" /> -->
+	</logger>
+
+</configuration>
