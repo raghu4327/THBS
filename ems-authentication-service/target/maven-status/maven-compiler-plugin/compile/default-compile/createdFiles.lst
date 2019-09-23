@@ -1,0 +1,15 @@
+com\mentor\ems\ws\response\TokenValidationResponse.class
+com\mentor\ems\ws\request\RevokeTokenRequest.class
+com\mentor\ems\security\exceptions\SecurityException.class
+com\mentor\ems\ws\response\TokenRevocationResponse.class
+com\mentor\ems\ws\WebServiceTemplate.class
+com\mentor\ems\security\util\CipherHelper.class
+com\mentor\ems\security\util\Util.class
+com\mentor\ems\security\impl\SecurityProviderImpl.class
+com\mentor\ems\interceptor\TokenInterceptor.class
+com\mentor\ems\security\spi\HashGenerator.class
+com\mentor\ems\security\impl\HashGeneratorImpl.class
+com\mentor\ems\security\util\SecurityConstants.class
+com\mentor\ems\security\spi\SecurityProvider.class
+com\mentor\ems\ws\WebServiceTemplate$1.class
+com\mentor\ems\ws\response\ResponseJSON.class
