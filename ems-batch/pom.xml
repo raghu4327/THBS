@@ -15,7 +15,7 @@
 		<springframework.version>4.3.9.RELEASE</springframework.version>
 		<springbatchcore.version>3.0.7.RELEASE</springbatchcore.version>
 		<javaxelapi.version>2.2.4</javaxelapi.version>
-		<hibernate.version>5.2.2.Final</hibernate.version>
+		<hibernate.version>5.4.24.Final</hibernate.version>
 		<hibernatejpa.version>1.0.0.Final</hibernatejpa.version>
 		<jackson.library>2.7.5</jackson.library>
 		<testng.version>6.9.4</testng.version>
